@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>LMCode - Python 代码编辑器</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --panel: #252526;
+            --border: #3c3c3c;
+            --text: #d4d4d4;
+            --text-secondary: #9d9d9d;
+            --accent: #007acc;
+            --line-number: #858585;
+            --editor-bg: #1a1a1d;
+            --terminal-bg: #0c0c0d;
+            --sidebar-width: 220px;
+            --toolbar-height: 44px;
+            --footer-height: 32px;
+            --font-size: 13px;
+            --line-height: 21px;
+            --editor-padding: 8px;
+            --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            --font-sans: system-ui, -apple-system, sans-serif;
+            --radius: 6px;
+            --transition: 0.2s ease;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg); color: var(--text); font-family: var(--font-sans);
+            height: 100vh; height: 100dvh; display: flex; flex-direction: column;
+            overflow: hidden; user-select: none;
+        }
+        .toolbar {
+            display: flex; align-items: center; height: var(--toolbar-height);
+            background: #2d2d30; border-bottom: 1px solid var(--border);
+            padding: 0 8px; gap: 2px; flex-shrink: 0; z-index: 10; overflow-x: auto;
+        }
+        .toolbar::-webkit-scrollbar { height: 0; }
+        .brand { font-weight: 700; font-size: 0.95rem; color: #fff; margin-right: 10px; white-space: nowrap; }
+        .brand span { color: var(--accent); }
+        .sep { width: 1px; height: 22px; background: var(--border); margin: 0 6px; flex-shrink: 0; }
+        .tool-btn {
+            width: 34px; height: 32px; border: none; border-radius: var(--radius);
+            background: transparent; color: #ccc; cursor: pointer;
+            font-size: 0.9rem; transition: background var(--transition);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; position: relative;
+        }
+        .tool-btn:hover { background: #3e3e42; color: #fff; }
+        .tool-btn.run-btn { color: #4ec9b0; }
+        .tool-btn.run-btn:hover { background: #1a3a30; color: #6ee7c0; }
+        .tool-btn.tip::after {
+            content: attr(data-tip); position: absolute; bottom: -28px; left: 50%;
+            transform: translateX(-50%); background: #000; color: #eee; font-size: 0.7rem;
+            padding: 3px 8px; border-radius: 3px; white-space: nowrap; pointer-events: none;
+            opacity: 0; transition: opacity var(--transition); z-index: 20;
+        }
+        .tool-btn.tip:hover::after { opacity: 1; }
+        .main { display: flex; flex: 1; overflow: hidden; position: relative; min-height: 0; }
+
+        .sidebar {
+            width: var(--sidebar-width); background: var(--panel);
+            border-right: 1px solid var(--border); display: flex;
+            flex-direction: column; flex-shrink: 0; z-index: 8;
+        }
+        .sidebar-header {
+            padding: 10px 12px; font-size: 0.75rem; text-transform: uppercase;
+            letter-spacing: 1.2px; color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between; gap: 6px;
+        }
+        .sidebar-header-actions { display: flex; gap: 4px; align-items: center; }
+        .add-btn, .import-btn {
+            width: 26px; height: 26px; border-radius: 50%; border: none;
+            background: transparent; color: #aaa; cursor: pointer;
+            font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
+            transition: all var(--transition);
+        }
+        .add-btn:hover, .import-btn:hover { background: #3e3e42; color: #fff; }
+        .file-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+        .file-list::-webkit-scrollbar { width: 4px; }
+        .file-list::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+        .file-item {
+            display: flex; align-items: center; padding: 7px 12px;
+            cursor: pointer; font-size: 0.85rem; gap: 8px;
+            border-left: 3px solid transparent; transition: background var(--transition);
+            position: relative;
+        }
+        .file-item:hover { background: #2a2a2e; }
+        .file-item.active { background: #37373d; border-left-color: var(--accent); color: #fff; }
+        .file-icon { font-size: 0.75rem; color: #888; }
+        .file-item.active .file-icon { color: #e8b44b; }
+        .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-menu-btn {
+            opacity: 0; width: 22px; height: 22px; border-radius: 50%;
+            border: none; background: transparent; color: #999; cursor: pointer;
+            font-size: 0.65rem; display: flex; align-items: center; justify-content: center;
+            transition: all var(--transition);
+        }
+        .file-item:hover .file-menu-btn { opacity: 1; }
+        .file-menu-btn:hover { background: #4a4a4a; color: #fff; }
+
+        .context-menu {
+            position: fixed; background: #2d2d30; border: 1px solid #555;
+            border-radius: 6px; padding: 4px 0; z-index: 200; min-width: 140px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6); display: none;
+        }
+        .context-menu-item {
+            padding: 8px 16px; cursor: pointer; font-size: 0.8rem;
+            color: #ddd; display: flex; align-items: center; gap: 8px;
+            transition: background var(--transition);
+        }
+        .context-menu-item:hover { background: #094771; }
+        .context-menu-item.danger { color: #e88; }
+        .context-menu-item.danger:hover { background: #5a2020; }
+
+        .editor-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
+        .editor-scroll {
+            flex: 1; overflow: auto; background: var(--editor-bg);
+            display: flex; align-items: flex-start; min-height: 0;
+        }
+        .editor-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+        .editor-scroll::-webkit-scrollbar-track { background: var(--editor-bg); }
+        .editor-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+        .line-numbers {
+            flex-shrink: 0; position: sticky; left: 0; top: 0; z-index: 3;
+            background: #1e1e1e; color: var(--line-number);
+            font-family: var(--font-mono); font-size: var(--font-size);
+            line-height: var(--line-height);
+            padding: var(--editor-padding) 10px var(--editor-padding) 8px;
+            text-align: right; white-space: pre; user-select: none;
+            min-height: 100%; align-self: stretch;
+            border-right: 1px solid #2a2a2a;
+        }
+        .editor-area { flex: 1 0 auto; position: relative; min-width: 100%; align-self: stretch; }
+        .editor-area textarea {
+            font-family: var(--font-mono); font-size: var(--font-size);
+            line-height: var(--line-height); padding: var(--editor-padding) 12px;
+            border: none; outline: none; white-space: pre;
+            tab-size: 4; -moz-tab-size: 4;
+            background: var(--editor-bg); color: var(--text);
+            width: 100%; min-height: 100%; resize: none;
+            display: block; box-sizing: border-box;
+            overflow: hidden; position: absolute; top: 0; left: 0;
+        }
+
+        .search-bar {
+            height: 36px; background: #2d2d30; border-top: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 8px; gap: 6px;
+            flex-shrink: 0; z-index: 9; overflow-x: auto;
+        }
+        .search-bar.hidden { display: none; }
+        .search-bar input {
+            background: #3c3c3c; border: 1px solid #555; color: #eee;
+            padding: 4px 10px; border-radius: 4px; font-size: 0.8rem;
+            width: 200px; min-width: 100px; outline: none; font-family: inherit;
+        }
+        .search-bar input:focus { border-color: var(--accent); }
+        .search-bar .search-info {
+            font-size: 0.7rem; color: var(--text-secondary); white-space: nowrap;
+            min-width: 50px; text-align: center;
+        }
+        .search-bar .small-btn {
+            width: 28px; height: 26px; border: none; border-radius: 4px;
+            background: transparent; color: #ccc; cursor: pointer;
+            font-size: 0.75rem; display: flex; align-items: center;
+            justify-content: center; transition: background var(--transition);
+        }
+        .search-bar .small-btn:hover { background: #3e3e42; color: #fff; }
+        .search-bar .small-btn.find-btn {
+            background: var(--accent); color: #fff; width: auto; padding: 0 10px;
+            font-size: 0.7rem; font-weight: 600; border-radius: 4px;
+        }
+        .search-bar .case-btn {
+            font-size: 0.65rem; padding: 4px 8px; border-radius: 4px;
+            border: 1px solid #555; background: transparent; color: #999;
+            cursor: pointer; transition: all var(--transition);
+        }
+        .search-bar .case-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        .terminal-panel {
+            height: 200px; min-height: 40px; max-height: 50%;
+            background: var(--terminal-bg); border-top: 2px solid #4ec9b0;
+            display: flex; flex-direction: column; flex-shrink: 0; z-index: 8;
+            resize: vertical; overflow: hidden;
+        }
+        .terminal-panel.hidden { display: none; }
+        .terminal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 4px 8px; background: #1a1a1a; border-bottom: 1px solid #333;
+            flex-shrink: 0;
+        }
+        .terminal-header span { font-size: 0.7rem; color: #4ec9b0; font-weight: 600; letter-spacing: 1px; }
+        .terminal-actions { display: flex; gap: 4px; }
+        .terminal-actions button {
+            width: 22px; height: 22px; border: none; border-radius: 3px;
+            background: transparent; color: #999; cursor: pointer;
+            font-size: 0.6rem; display: flex; align-items: center;
+            justify-content: center; transition: all var(--transition);
+        }
+        .terminal-actions button:hover { background: #333; color: #fff; }
+        .terminal-output {
+            flex: 1; overflow-y: auto; padding: 8px 12px;
+            font-family: var(--font-mono); font-size: 12px;
+            line-height: 1.5; color: #ccc; white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .terminal-output::-webkit-scrollbar { width: 4px; }
+        .terminal-output::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+        .terminal-output .stdout { color: #d4d4d4; }
+        .terminal-output .stderr { color: #f44747; }
+        .terminal-output .info { color: #4ec9b0; }
+        .terminal-output .prompt { color: #4ec9b0; }
+
+        .status-bar {
+            height: 22px; background: #007acc; color: #fff;
+            display: flex; align-items: center; padding: 0 10px;
+            font-size: 0.7rem; gap: 12px; flex-shrink: 0;
+        }
+        .footer-bar {
+            height: var(--footer-height); background: #252526;
+            border-top: 1px solid var(--border); display: flex;
+            align-items: center; justify-content: center; gap: 8px;
+            font-size: 0.7rem; color: var(--text-secondary); flex-shrink: 0;
+        }
+        .footer-bar a { color: var(--accent); text-decoration: none; }
+        .footer-bar a:hover { text-decoration: underline; }
+        .settings-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            z-index: 50; opacity: 0; pointer-events: none;
+            transition: opacity var(--transition);
+        }
+        .settings-overlay.open { opacity: 1; pointer-events: auto; }
+        .settings-panel {
+            position: fixed; top: 0; right: 0; width: 360px; max-width: 90vw;
+            height: 100%; height: 100dvh; background: #252526;
+            border-left: 1px solid var(--border); z-index: 51;
+            display: flex; flex-direction: column; transform: translateX(100%);
+            transition: transform 0.25s ease; box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+        }
+        .settings-panel.open { transform: translateX(0); }
+        .sp-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 600;
+        }
+        .sp-close {
+            width: 30px; height: 30px; border-radius: 50%; border: none;
+            background: transparent; color: #aaa; cursor: pointer;
+            font-size: 1rem; display: flex; align-items: center; justify-content: center;
+        }
+        .sp-close:hover { background: #3e3e42; color: #fff; }
+        .sp-body { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+        .sp-section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); }
+        .sp-btn {
+            display: flex; align-items: center; gap: 10px; width: 100%;
+            padding: 10px 14px; border-radius: var(--radius);
+            border: 1px solid var(--border); background: #2d2d30;
+            color: #ddd; cursor: pointer; font-size: 0.85rem;
+            transition: all var(--transition); text-align: left;
+        }
+        .sp-btn:hover { background: #3e3e42; }
+        .sp-btn.danger-btn { border-color: #5a3030; color: #e88; background: #2d2020; }
+        .sp-setting-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 0; color: #ccc; font-size: 0.85rem;
+        }
+        .sp-setting-row select {
+            background: #3c3c3c; border: 1px solid #555;
+            color: #eee; padding: 4px 8px; border-radius: 4px;
+            font-size: 0.8rem; width: 100px;
+        }
+        .toggle-switch {
+            position: relative; width: 40px; height: 20px;
+            background: #555; border-radius: 20px; cursor: pointer;
+            transition: background var(--transition);
+        }
+        .toggle-switch.active { background: var(--accent); }
+        .toggle-switch::after {
+            content: ''; position: absolute; top: 2px; left: 2px;
+            width: 16px; height: 16px; border-radius: 50%;
+            background: #fff; transition: transform var(--transition);
+        }
+        .toggle-switch.active::after { transform: translateX(20px); }
+
+        .changelog-list { max-height: 200px; overflow-y: auto; }
+        .changelog-list::-webkit-scrollbar { width: 4px; }
+        .changelog-list::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+        .changelog-item { padding: 6px 0; border-bottom: 1px solid #333; font-size: 0.78rem; }
+        .changelog-item:last-child { border-bottom: none; }
+        .changelog-version { color: #4ec9b0; font-weight: 600; margin-bottom: 2px; }
+        .changelog-desc { color: #aaa; line-height: 1.4; }
+
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            z-index: 60; display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity var(--transition);
+        }
+        .modal-overlay.open { opacity: 1; pointer-events: auto; }
+        .modal-dialog {
+            background: #2d2d30; border: 1px solid var(--border);
+            border-radius: 10px; padding: 24px 28px; max-width: 440px; width: 90vw;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.5); text-align: center;
+        }
+        .modal-input {
+            width: 100%; padding: 8px 12px; background: #3c3c3c;
+            border: 1px solid #555; color: #fff; border-radius: 4px;
+            font-size: 0.9rem; margin: 8px 0; outline: none;
+        }
+        .modal-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+        .modal-buttons button {
+            padding: 8px 20px; border-radius: 20px; border: none;
+            cursor: pointer; font-size: 0.85rem; background: #4a4a4a; color: #ddd;
+            transition: background 0.2s;
+        }
+        .modal-buttons button.primary { background: var(--accent); color: #fff; font-weight: 600; }
+
+        /* Pyodide下载进度弹窗 */
+        .progress-container {
+            width: 100%; height: 8px; background: #3c3c3c;
+            border-radius: 4px; margin: 20px 0; overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%; background: linear-gradient(90deg, #4ec9b0, #007acc);
+            border-radius: 4px; width: 0%; transition: width 0.15s ease;
+        }
+        .progress-spinner {
+            display: inline-block; width: 20px; height: 20px;
+            border: 2px solid #555; border-top-color: #4ec9b0;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+            margin-bottom: -4px; margin-right: 6px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .progress-text {
+            font-size: 0.8rem; color: #aaa; margin-top: 8px;
+            min-height: 20px;
+        }
+
+        .tutorial-highlight {
+            position: relative; z-index: 101 !important;
+            box-shadow: 0 0 0 4px #ffaa00, 0 0 20px rgba(255,170,0,0.5) !important;
+            border-radius: 6px;
+        }
+        .tutorial-card {
+            position: fixed; z-index: 102; background: #2d2d30;
+            border: 1px solid #ffaa00; border-radius: 12px; padding: 18px 22px;
+            max-width: 280px; width: 80vw; box-shadow: 0 8px 30px rgba(0,0,0,0.7);
+            color: #eee; font-size: 0.9rem; line-height: 1.5;
+            text-align: left; animation: fadeInUp 0.25s ease;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .tut-title { font-weight: 700; margin-bottom: 6px; color: #ffaa00; font-size: 0.95rem; }
+        .tut-buttons { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+        .tut-buttons button {
+            padding: 6px 16px; border-radius: 20px; border: none;
+            cursor: pointer; font-size: 0.8rem; background: #4a4a4a; color: #ddd;
+            transition: background 0.2s;
+        }
+        .tut-buttons button.tut-primary { background: #ffaa00; color: #000; font-weight: 600; }
+        .toast {
+            position: fixed; bottom: 50px; left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #333; color: #eee; padding: 8px 18px;
+            border-radius: 20px; font-size: 0.8rem; z-index: 70;
+            opacity: 0; pointer-events: none; transition: all 0.3s; white-space: nowrap;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed; left: 0; top: var(--toolbar-height); bottom: 0;
+                width: 260px; max-width: 80vw; z-index: 30;
+                transform: translateX(-100%); box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+            }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .sidebar-backdrop {
+                position: fixed; inset: 0; top: var(--toolbar-height);
+                background: rgba(0,0,0,0.45); z-index: 29;
+                opacity: 0; pointer-events: none; transition: opacity var(--transition);
+            }
+            .sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+            .line-numbers { width: 36px; padding-left: 4px; padding-right: 6px; }
+            .search-bar input { width: 100px; }
+            .terminal-panel { height: 150px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <span class="brand">LM<span>Code</span></span><span class="sep"></span>
+        <button class="tool-btn tip" data-tip="文件列表" id="btn-toggle-sidebar"><i class="fa-solid fa-folder-tree"></i></button>
+        <span class="sep"></span>
+        <button class="tool-btn tip" data-tip="新建文件" id="btn-new-file"><i class="fa-solid fa-file-circle-plus"></i></button>
+        <button class="tool-btn tip" data-tip="保存文件" id="btn-save"><i class="fa-solid fa-floppy-disk"></i></button>
+        <span class="sep"></span>
+        <button class="tool-btn tip" data-tip="撤销" id="btn-undo"><i class="fa-solid fa-rotate-left"></i></button>
+        <button class="tool-btn tip" data-tip="重做" id="btn-redo"><i class="fa-solid fa-rotate-right"></i></button>
+        <span class="sep"></span>
+        <button class="tool-btn tip" data-tip="Tab缩进" id="btn-indent"><i class="fa-solid fa-indent"></i></button>
+        <button class="tool-btn tip" data-tip="减少缩进" id="btn-outdent"><i class="fa-solid fa-outdent"></i></button>
+        <span class="sep"></span>
+        <button class="tool-btn tip" data-tip="查找替换" id="btn-search"><i class="fa-solid fa-magnifying-glass"></i></button>
+        <span class="sep"></span>
+        <button class="tool-btn run-btn tip" data-tip="运行代码" id="btn-run"><i class="fa-solid fa-play"></i></button>
+        <span class="sep"></span>
+        <button class="tool-btn tip" data-tip="设置" id="btn-settings"><i class="fa-solid fa-gear"></i></button>
+        <span style="flex:1;"></span>
+        <span style="font-size:0.7rem;color:var(--text-secondary);" id="file-indicator">main.py</span>
+    </div>
+    <div class="main">
+        <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                文件资源管理器
+                <div class="sidebar-header-actions">
+                    <button class="import-btn" id="btn-import" title="导入文件"><i class="fa-solid fa-download"></i></button>
+                    <button class="add-btn" id="btn-sidebar-add" title="新建文件"><i class="fa-solid fa-plus"></i></button>
+                </div>
+            </div>
+            <div class="file-list" id="file-list"></div>
+        </aside>
+        <div class="editor-container">
+            <div class="editor-scroll" id="editor-scroll">
+                <div class="line-numbers" id="line-numbers">1</div>
+                <div class="editor-area">
+                    <textarea id="code-textarea" spellcheck="false" placeholder="# 在此编写 Python 代码..."></textarea>
+                </div>
+            </div>
+            <div class="search-bar hidden" id="search-bar">
+                <input type="text" id="search-input" placeholder="查找...">
+                <button class="small-btn find-btn" id="btn-find-execute">查找</button>
+                <span class="search-info" id="search-info"></span>
+                <button class="small-btn" id="btn-search-prev"><i class="fa-solid fa-chevron-up"></i></button>
+                <button class="small-btn" id="btn-search-next"><i class="fa-solid fa-chevron-down"></i></button>
+                <button class="case-btn" id="btn-case-sensitive">Aa</button>
+                <input type="text" id="replace-input" placeholder="替换为..." style="width:140px;">
+                <button class="small-btn" id="btn-replace-one"><i class="fa-solid fa-rotate"></i></button>
+                <button class="small-btn" id="btn-replace-all"><i class="fa-solid fa-check-double"></i></button>
+                <button class="small-btn" id="btn-search-close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="terminal-panel hidden" id="terminal-panel">
+                <div class="terminal-header">
+                    <span><i class="fa-solid fa-terminal"></i> Python 终端</span>
+                    <div class="terminal-actions">
+                        <button id="btn-clear-terminal"><i class="fa-solid fa-eraser"></i></button>
+                        <button id="btn-close-terminal"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+                <div class="terminal-output" id="terminal-output">
+                    <span class="info">终端就绪，点击运行按钮执行代码。</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="status-bar">
+        <span id="status-lang">Python</span>
+        <span id="status-encoding">UTF-8</span>
+        <span id="status-position">行 1, 列 1</span>
+        <span style="flex:1;"></span>
+        <span id="status-pyodide" style="color:#4ec9b0;display:none;">Pyodide 就绪</span>
+        <span id="status-saved">已保存</span>
+        <span id="status-search-count" style="display:none;"></span>
+    </div>
+    <div class="footer-bar">
+        &copy; 2026 <strong>LMCode</strong> &mdash; @LongMoon 原创作品 | 未经允许禁止盗用 | <a href="#" id="footer-about-link">关于编辑器</a>
+    </div>
+    <input type="file" id="import-file-input" accept=".py,.txt" style="display:none">
+    <div class="settings-overlay" id="settings-overlay"></div>
+    <div class="settings-panel" id="settings-panel">
+        <div class="sp-header">设置 <button class="sp-close" id="btn-sp-close"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="sp-body">
+            <div class="sp-section-title">编辑器</div>
+            <div class="sp-setting-row">字体大小 <select id="setting-font-size"><option value="12">12px</option><option value="13" selected>13px</option><option value="14">14px</option><option value="16">16px</option><option value="18">18px</option></select></div>
+            <div class="sp-setting-row">自动换行 <div class="toggle-switch" id="setting-word-wrap"></div></div>
+            <div class="sp-setting-row">缩进大小 <select id="setting-indent-size"><option value="4" selected>4 空格</option><option value="2">2 空格</option><option value="tab">制表符</option></select></div>
+            <div class="sp-section-title">信息</div>
+            <button class="sp-btn" id="btn-about"><i class="fa-solid fa-circle-info"></i> 关于 LMCode</button>
+            <button class="sp-btn" id="btn-restart-tutorial"><i class="fa-solid fa-graduation-cap"></i> 重新观看教程</button>
+            <button class="sp-btn" id="btn-changelog"><i class="fa-solid fa-clock-rotate-left"></i> 更新历史</button>
+            <div id="changelog-panel" style="display:none;">
+                <div class="changelog-list">
+                    <div class="changelog-item"><div class="changelog-version">v2.9.3</div><div class="changelog-desc">Pyodide下载改为弹窗进度条+加载动画，体验更直观。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.9.2</div><div class="changelog-desc">重写input()实现，改用JS prompt拦截，稳定支持输入。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.9.1</div><div class="changelog-desc">修复input()导致的I/O错误；设置面板新增更新历史。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.9.0</div><div class="changelog-desc">集成Pyodide在线运行；新增终端面板。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.8.1</div><div class="changelog-desc">查找改为手动触发模式。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.8.0</div><div class="changelog-desc">新增查找替换；大小写切换、逐个替换和全部替换。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.7.0</div><div class="changelog-desc">导入导出；文件右键菜单；版权更新为LongMoon。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.6.0</div><div class="changelog-desc">修复代码区滚动bug；移除语法高亮。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.5.0</div><div class="changelog-desc">Python智能缩进；冒号行回车自动缩进。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v2.0.0</div><div class="changelog-desc">重构代码区；横向滚动；文件管理和设置面板。</div></div>
+                    <div class="changelog-item"><div class="changelog-version">v1.0.0</div><div class="changelog-desc">初始版本发布；基础编辑功能和教程引导。</div></div>
+                </div>
+            </div>
+            <div class="sp-section-title">数据管理</div>
+            <button class="sp-btn danger-btn" id="btn-clear-data"><i class="fa-solid fa-skull-crossbones"></i> 删除所有本地数据</button>
+            <p style="font-size:0.7rem;color:#888;">清除编辑器存储数据及Pyodide运行环境。</p>
+            <div style="flex:1;"></div>
+            <p style="font-size:0.68rem;color:#666;text-align:center;">LMCode &copy; 2026 @LongMoon</p>
+        </div>
+    </div>
+    <div class="modal-overlay" id="about-overlay">
+        <div class="modal-dialog">
+            <div style="font-size:1.8rem;font-weight:700;">LM<span style="color:var(--accent);">Code</span></div>
+            <div style="color:var(--text-secondary);font-size:0.8rem;">版本 2.9.3</div>
+            <h3>Python 代码编辑器</h3>
+            <p style="color:#bbb;margin:12px 0;">轻量级 Python 编辑器，支持智能缩进、查找替换、在线运行、文件管理与移动端适配。</p>
+            <p style="color:#999;font-size:0.78rem;border-top:1px solid var(--border);padding-top:10px;">
+                &copy; 2026 LMCode | @LongMoon 原创作品<br>未经允许禁止盗用
+            </p>
+            <div class="modal-buttons"><button class="primary" id="btn-modal-close">关闭</button></div>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+        (function() {
+            const $ = id => document.getElementById(id);
+            const $textarea = $('code-textarea');
+            const $lineNumbers = $('line-numbers');
+            const $fileList = $('file-list');
+            const $statusSaved = $('status-saved');
+            const $toast = $('toast');
+            const $sidebar = $('sidebar');
+            const $sidebarBackdrop = $('sidebar-backdrop');
+            const $importInput = $('import-file-input');
+            const $searchBar = $('search-bar');
+            const $searchInput = $('search-input');
+            const $replaceInput = $('replace-input');
+            const $searchInfo = $('search-info');
+            const $statusSearchCount = $('status-search-count');
+            const $terminalPanel = $('terminal-panel');
+            const $terminalOutput = $('terminal-output');
+            const $statusPyodide = $('status-pyodide');
+
+            const STORAGE_PREFIX = 'lmcode_';
+            const FILE_LIST_KEY = STORAGE_PREFIX + 'file_list';
+            const ACTIVE_FILE_KEY = STORAGE_PREFIX + 'active_file';
+            const CONTENT_PREFIX = STORAGE_PREFIX + 'content_';
+            const SETTINGS_KEY = STORAGE_PREFIX + 'settings';
+            const TUTORIAL_KEY = STORAGE_PREFIX + 'tutorial_done';
+            const PYODIDE_READY_KEY = STORAGE_PREFIX + 'pyodide_ready';
+            const DEFAULT_FILE = 'main.py';
+
+            let fileList = [], activeFileName = DEFAULT_FILE, isDirty = false;
+            let currentSettings = { fontSize: 13, wordWrap: false, indentSize: 4, indentType: 'space' };
+            let contextMenu = null;
+            let searchResults = [], searchIndex = -1;
+            let caseSensitive = false;
+            let lastSearchQuery = '';
+            let pyodideInstance = null;
+            let pyodideLoading = false;
+
+            function showToast(msg) {
+                $toast.textContent = msg; $toast.classList.add('show');
+                clearTimeout($toast._t);
+                $toast._t = setTimeout(() => $toast.classList.remove('show'), 2000);
+            }
+
+            function escapeHTML(str) {
+                return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+            }
+
+            function escapeRegex(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+            function updateLineNumbers() {
+                const lines = $textarea.value.split('\n');
+                let nums = '';
+                for (let i = 1; i <= Math.max(lines.length, 1); i++) nums += i + '\n';
+                $lineNumbers.textContent = nums;
+            }
+
+            function autoResize() { $textarea.style.height = 'auto';
+                $textarea.style.height = $textarea.scrollHeight + 'px';
+                $lineNumbers.style.height = $textarea.scrollHeight + 'px'; }
+
+            function fullUpdate() { updateLineNumbers(); autoResize(); updateCursorPosition(); }
+
+            function updateCursorPosition() {
+                const pos = $textarea.selectionStart;
+                const before = $textarea.value.substring(0, pos);
+                const lines = before.split('\n');
+                $('status-position').textContent = `行 ${lines.length}, 列 ${lines[lines.length-1].length+1}`;
+            }
+
+            function getIndentStr() { return currentSettings.indentType === 'tab' ? '\t' : ' '.repeat(currentSettings.indentSize); }
+            function getIndentInfo(line) {
+                const match = line.match(/^(\s*)/);
+                const ws = match ? match[1] : '';
+                if (currentSettings.indentType === 'tab') { const count = (ws.match(/\t/g) || []).length; return { str: '\t'.repeat(count), level: count }; }
+                const level = Math.floor(ws.length / currentSettings.indentSize);
+                return { str: ' '.repeat(level * currentSettings.indentSize), level };
+            }
+
+            function indentSelection() {
+                const ta = $textarea; const start = ta.selectionStart, end = ta.selectionEnd;
+                const text = ta.value; const ls = text.lastIndexOf('\n', start - 1) + 1;
+                const le = text.indexOf('\n', end), effEnd = le === -1 ? text.length : le;
+                const sel = text.substring(ls, effEnd); const ind = getIndentStr();
+                const newSel = sel.split('\n').map(l => ind + l).join('\n');
+                ta.value = text.substring(0, ls) + newSel + text.substring(effEnd);
+                ta.selectionStart = ls; ta.selectionEnd = ls + newSel.length;
+                onContentChange();
+            }
+
+            function outdentSelection() {
+                const ta = $textarea; const start = ta.selectionStart, end = ta.selectionEnd;
+                const text = ta.value; const ls = text.lastIndexOf('\n', start - 1) + 1;
+                const le = text.indexOf('\n', end), effEnd = le === -1 ? text.length : le;
+                const sel = text.substring(ls, effEnd); const ind = getIndentStr();
+                const newSel = sel.split('\n').map(l => {
+                    if (l.startsWith(ind)) return l.slice(ind.length);
+                    if (ind === '\t' && l.startsWith('\t')) return l.slice(1);
+                    let sc = 0; while (sc < ind.length && l[sc] === ' ') sc++;
+                    return l.slice(sc);
+                }).join('\n');
+                ta.value = text.substring(0, ls) + newSel + text.substring(effEnd);
+                ta.selectionStart = ls; ta.selectionEnd = ls + newSel.length;
+                onContentChange();
+            }
+
+            function onContentChange() {
+                if (!isDirty) { isDirty = true; $statusSaved.textContent = '未保存'; }
+                fullUpdate();
+                if (searchResults.length > 0 && lastSearchQuery && $searchInput.value === lastSearchQuery) executeSearch(false);
+            }
+
+            function executeSearch(updateIndex = true) {
+                const query = $searchInput.value;
+                lastSearchQuery = query;
+                if (!query) { $searchInfo.textContent = ''; $statusSearchCount.style.display = 'none'; searchResults = []; searchIndex = -1; return; }
+                const flags = caseSensitive ? 'g' : 'gi';
+                const regex = new RegExp(escapeRegex(query), flags);
+                searchResults = [];
+                let match;
+                const text = $textarea.value;
+                while ((match = regex.exec(text)) !== null) { searchResults.push({ start: match.index, end: match.index + match[0].length }); if (match[0].length === 0) regex.lastIndex++; }
+                if (updateIndex) searchIndex = searchResults.length > 0 ? 0 : -1;
+                updateSearchUI();
+            }
+
+            function updateSearchUI() {
+                const count = searchResults.length;
+                if (count === 0 && $searchInput.value) { $searchInfo.textContent = '无匹配'; $statusSearchCount.style.display = 'block'; $statusSearchCount.textContent = '查找: 0/0'; }
+                else if (count > 0) { $searchInfo.textContent = `${searchIndex + 1}/${count}`; $statusSearchCount.style.display = 'block'; $statusSearchCount.textContent = `查找: ${searchIndex + 1}/${count}`; }
+                else { $searchInfo.textContent = ''; $statusSearchCount.style.display = 'none'; }
+                if (searchIndex >= 0 && searchIndex < searchResults.length) {
+                    const r = searchResults[searchIndex];
+                    $textarea.focus(); $textarea.setSelectionRange(r.start, r.end);
+                    const textBefore = $textarea.value.substring(0, r.start);
+                    const lineNum = textBefore.split('\n').length;
+                    const lineHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--line-height'));
+                    document.getElementById('editor-scroll').scrollTop = Math.max(0, (lineNum - 1) * lineHeight - 60);
+                }
+            }
+
+            function searchNext() { if (searchResults.length === 0) return; searchIndex = (searchIndex + 1) % searchResults.length; updateSearchUI(); }
+            function searchPrev() { if (searchResults.length === 0) return; searchIndex = (searchIndex - 1 + searchResults.length) % searchResults.length; updateSearchUI(); }
+
+            function replaceCurrent() {
+                if (searchIndex < 0 || searchIndex >= searchResults.length) return;
+                const replacement = $replaceInput.value;
+                const r = searchResults[searchIndex];
+                $textarea.value = $textarea.value.substring(0, r.start) + replacement + $textarea.value.substring(r.end);
+                const delta = replacement.length - (r.end - r.start);
+                for (let i = searchIndex + 1; i < searchResults.length; i++) { searchResults[i].start += delta; searchResults[i].end += delta; }
+                searchResults.splice(searchIndex, 1);
+                if (searchResults.length === 0) searchIndex = -1; else if (searchIndex >= searchResults.length) searchIndex = searchResults.length - 1;
+                updateSearchUI(); onContentChange();
+            }
+
+            function replaceAll() {
+                const query = $searchInput.value;
+                if (!query || searchResults.length === 0) return;
+                const replacement = $replaceInput.value;
+                const count = searchResults.length;
+                const flags = caseSensitive ? 'g' : 'gi';
+                $textarea.value = $textarea.value.replace(new RegExp(escapeRegex(query), flags), replacement);
+                searchResults = []; searchIndex = -1;
+                updateSearchUI(); onContentChange();
+                showToast(`已替换 ${count} 处`);
+                if ($searchInput.value) executeSearch(false);
+            }
+
+            function toggleSearchBar() {
+                const isHidden = $searchBar.classList.contains('hidden');
+                $searchBar.classList.toggle('hidden');
+                if (isHidden) { $searchInput.focus(); if ($searchInput.value) executeSearch(); }
+                else { $statusSearchCount.style.display = 'none'; searchResults = []; searchIndex = -1; lastSearchQuery = ''; }
+            }
+
+            // ==================== Pyodide 运行环境 ====================
+            async function getPyodide() {
+                if (pyodideInstance) return pyodideInstance;
+                if (pyodideLoading) { showToast('Pyodide 正在下载中...'); return null; }
+                pyodideLoading = true;
+                const progressModal = showProgressModal();
+                try {
+                    if (!window.loadPyodide) {
+                        updateProgressModal(progressModal, 10, '正在加载 Pyodide 加载器...');
+                        await new Promise((resolve, reject) => {
+                            const script = document.createElement('script');
+                            script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js';
+                            script.onload = resolve;
+                            script.onerror = () => reject(new Error('无法加载 Pyodide 脚本'));
+                            document.head.appendChild(script);
+                        });
+                    }
+                    updateProgressModal(progressModal, 20, '正在下载 Python 运行环境...');
+                    pyodideInstance = await loadPyodide({
+                        indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/',
+                    });
+                    updateProgressModal(progressModal, 80, '正在初始化 input() 支持...');
+                    await pyodideInstance.runPythonAsync(`
+import builtins
+def _lmcode_input(prompt_text=""):
+    import js
+    result = js.prompt(str(prompt_text))
+    if result is None:
+        raise EOFError("input cancelled")
+    return str(result)
+builtins.input = _lmcode_input
+`);
+                    updateProgressModal(progressModal, 100, 'Python 环境就绪！');
+                    localStorage.setItem(PYODIDE_READY_KEY, '1');
+                    $statusPyodide.style.display = 'inline';
+                    appendTerminal('info', 'Pyodide 加载完成，Python 环境就绪。\n');
+                    appendTerminal('prompt', '>>> input() 已就绪，可正常使用\n\n');
+                    setTimeout(() => closeProgressModal(progressModal), 600);
+                    return pyodideInstance;
+                } catch (err) {
+                    closeProgressModal(progressModal);
+                    appendTerminal('stderr', `加载失败: ${err.message}\n`);
+                    return null;
+                } finally { pyodideLoading = false; }
+            }
+
+            function showProgressModal() {
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay open';
+                overlay.innerHTML = `
+                    <div class="modal-dialog">
+                        <h3 style="color:#fff;margin-bottom:8px;"><span class="progress-spinner"></span> 正在准备 Python 环境</h3>
+                        <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
+                        <p class="progress-text" id="progress-text">正在连接...</p>
+                    </div>`;
+                document.body.appendChild(overlay);
+                return overlay;
+            }
+
+            function updateProgressModal(overlay, percent, text) {
+                const bar = overlay.querySelector('#progress-bar');
+                const txt = overlay.querySelector('#progress-text');
+                if (bar) bar.style.width = percent + '%';
+                if (txt) txt.textContent = text;
+            }
+
+            function closeProgressModal(overlay) {
+                if (overlay && overlay.parentNode) overlay.remove();
+            }
+
+            function appendTerminal(type, text) {
+                const span = document.createElement('span');
+                span.className = type;
+                span.textContent = text;
+                $terminalOutput.appendChild(span);
+                $terminalOutput.scrollTop = $terminalOutput.scrollHeight;
+            }
+
+            function clearTerminal() { $terminalOutput.innerHTML = '<span class="info">终端已清空。</span>\n'; }
+
+            async function runCode() {
+                $terminalPanel.classList.remove('hidden');
+                if (!pyodideInstance && !localStorage.getItem(PYODIDE_READY_KEY)) {
+                    const confirmed = await showConfirmDownload();
+                    if (!confirmed) return;
+                }
+                clearTerminal();
+                appendTerminal('info', '正在执行...\n\n');
+                try {
+                    const pyodide = await getPyodide();
+                    if (!pyodide) { appendTerminal('stderr', '错误: Python 环境未就绪。\n'); return; }
+                    pyodide.setStdout({ batched: (text) => { appendTerminal('stdout', text); } });
+                    pyodide.setStderr({ batched: (text) => { appendTerminal('stderr', text); } });
+                    const code = $textarea.value;
+                    await pyodide.runPythonAsync(code);
+                    appendTerminal('prompt', '\n>>> 执行完成\n');
+                } catch (err) {
+                    appendTerminal('stderr', `\n错误: ${err.message}\n`);
+                    appendTerminal('prompt', '\n>>> 执行完成（有错误）\n');
+                }
+            }
+
+            function showConfirmDownload() {
+                return new Promise(resolve => {
+                    const overlay = document.createElement('div'); overlay.className = 'modal-overlay open';
+                    overlay.innerHTML = `
+                        <div class="modal-dialog">
+                            <h3 style="color:#fff;margin-bottom:6px;"><i class="fa-solid fa-cloud-download-alt"></i> 下载 Python 运行环境</h3>
+                            <p style="color:#bbb;margin:12px 0;">Pyodide 约 10MB，下载后可在线运行 Python 代码。</p>
+                            <p style="color:#888;font-size:0.75rem;">下载进度会以弹窗展示，支持 input() 输入。</p>
+                            <div class="modal-buttons"><button class="cancel">取消</button><button class="primary confirm"><i class="fa-solid fa-download"></i> 开始下载</button></div></div>`;
+                    document.body.appendChild(overlay);
+                    overlay.querySelector('.cancel').onclick = () => { overlay.remove(); resolve(false); };
+                    overlay.querySelector('.confirm').onclick = () => { overlay.remove(); resolve(true); };
+                });
+            }
+
+            function destroyPyodide() {
+                if (pyodideInstance) { try { pyodideInstance._module = null; } catch (e) {} pyodideInstance = null; }
+                pyodideLoading = false;
+                localStorage.removeItem(PYODIDE_READY_KEY);
+                $statusPyodide.style.display = 'none';
+                if (!$terminalPanel.classList.contains('hidden')) { clearTerminal(); appendTerminal('info', 'Pyodide 环境已卸载。\n'); }
+            }
+
+            function applySettings() {
+                const r = document.documentElement.style;
+                r.setProperty('--font-size', currentSettings.fontSize + 'px');
+                r.setProperty('--line-height', (currentSettings.fontSize * 1.6).toFixed(1) + 'px');
+                $textarea.style.whiteSpace = currentSettings.wordWrap ? 'pre-wrap' : 'pre';
+                fullUpdate();
+            }
+
+            function loadSettings() {
+                try { const raw = localStorage.getItem(SETTINGS_KEY); if (raw) currentSettings = { ...currentSettings, ...JSON.parse(raw) }; } catch (e) {}
+                applySettings(); syncSettingsUI();
+            }
+
+            function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(currentSettings)); applySettings(); }
+            function syncSettingsUI() {
+                $('setting-font-size').value = currentSettings.fontSize;
+                $('setting-word-wrap').classList.toggle('active', currentSettings.wordWrap);
+                $('setting-indent-size').value = currentSettings.indentType === 'tab' ? 'tab' : currentSettings.indentSize;
+            }
+
+            function loadFileList() {
+                try {
+                    fileList = JSON.parse(localStorage.getItem(FILE_LIST_KEY)) || [];
+                    if (!Array.isArray(fileList)) fileList = [];
+                    if (!fileList.length) { fileList = [DEFAULT_FILE]; saveFileList(); saveFileContent(DEFAULT_FILE, ''); }
+                    if (!fileList.includes(DEFAULT_FILE)) { fileList.unshift(DEFAULT_FILE); saveFileList(); saveFileContent(DEFAULT_FILE, ''); }
+                } catch (e) { fileList = [DEFAULT_FILE]; saveFileList(); }
+            }
+
+            function saveFileList() { localStorage.setItem(FILE_LIST_KEY, JSON.stringify(fileList)); }
+            function saveFileContent(fn, c) { localStorage.setItem(CONTENT_PREFIX + fn, c); }
+            function loadFileContent(fn) { return localStorage.getItem(CONTENT_PREFIX + fn) || ''; }
+            function getActiveFile() {
+                const s = localStorage.getItem(ACTIVE_FILE_KEY);
+                return s && fileList.includes(s) ? s : (fileList.includes(DEFAULT_FILE) ? DEFAULT_FILE : fileList[0]);
+            }
+            function setActiveFile(fn) { activeFileName = fn; localStorage.setItem(ACTIVE_FILE_KEY, fn); $('file-indicator').textContent = fn; renderFileList(); }
+            function deleteFileData(fn) { localStorage.removeItem(CONTENT_PREFIX + fn); }
+
+            function clearAllData() {
+                const keys = [];
+                for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k); }
+                keys.forEach(k => localStorage.removeItem(k));
+                destroyPyodide();
+                fileList = [DEFAULT_FILE]; saveFileList(); saveFileContent(DEFAULT_FILE, '');
+                activeFileName = DEFAULT_FILE; localStorage.setItem(ACTIVE_FILE_KEY, DEFAULT_FILE);
+                $textarea.value = ''; isDirty = false; fullUpdate(); renderFileList();
+                setActiveFile(DEFAULT_FILE); $statusSaved.textContent = '已保存';
+            }
+
+            function renderFileList() {
+                $fileList.innerHTML = '';
+                fileList.forEach(fn => {
+                    const div = document.createElement('div'); div.className = 'file-item' + (fn === activeFileName ? ' active' : '');
+                    div.innerHTML = `<i class="fa-solid fa-file-lines file-icon"></i><span class="file-name">${escapeHTML(fn)}</span><button class="file-menu-btn" data-fn="${escapeHTML(fn)}" title="更多操作"><i class="fa-solid fa-ellipsis-vertical"></i></button>`;
+                    div.addEventListener('click', e => { if (!e.target.closest('.file-menu-btn')) switchToFile(fn); });
+                    $fileList.appendChild(div);
+                });
+                document.querySelectorAll('.file-menu-btn').forEach(btn => { btn.addEventListener('click', e => { e.stopPropagation(); showContextMenu(e.clientX, e.clientY, btn.dataset.fn); }); });
+            }
+
+            function showContextMenu(x, y, filename) {
+                if (contextMenu) contextMenu.remove();
+                contextMenu = document.createElement('div'); contextMenu.className = 'context-menu';
+                contextMenu.innerHTML = `<div class="context-menu-item" data-action="rename"><i class="fa-solid fa-pen-to-square"></i> 重命名</div><div class="context-menu-item" data-action="export"><i class="fa-solid fa-upload"></i> 导出</div><div class="context-menu-item danger" data-action="delete"><i class="fa-solid fa-trash"></i> 删除</div>`;
+                contextMenu.style.display = 'block';
+                contextMenu.style.left = Math.min(x, window.innerWidth - 150) + 'px';
+                contextMenu.style.top = Math.min(y, window.innerHeight - 120) + 'px';
+                document.body.appendChild(contextMenu);
+                contextMenu.querySelector('[data-action="rename"]').onclick = () => { closeContextMenu(); renameFile(filename); };
+                contextMenu.querySelector('[data-action="export"]').onclick = () => { closeContextMenu(); exportFile(filename); };
+                contextMenu.querySelector('[data-action="delete"]').onclick = () => { closeContextMenu(); confirmDeleteFile(filename); };
+                setTimeout(() => { document.addEventListener('click', () => closeContextMenu(), { once: true }); }, 10);
+            }
+
+            function closeContextMenu() { if (contextMenu) { contextMenu.remove(); contextMenu = null; } }
+
+            async function renameFile(oldName) {
+                const newName = await showPrompt('重命名文件：', oldName);
+                if (!newName || !newName.trim() || newName.trim() === oldName) return;
+                let fn = newName.trim(); if (!fn.endsWith('.py')) fn += '.py';
+                if (fileList.includes(fn)) { showToast('文件已存在'); return; }
+                const content = loadFileContent(oldName); deleteFileData(oldName); saveFileContent(fn, content);
+                const idx = fileList.indexOf(oldName); if (idx !== -1) fileList[idx] = fn;
+                saveFileList();
+                if (activeFileName === oldName) { activeFileName = fn; localStorage.setItem(ACTIVE_FILE_KEY, fn); $('file-indicator').textContent = fn; }
+                renderFileList(); showToast(`已重命名为 ${fn}`);
+            }
+
+            function exportFile(filename) {
+                const content = loadFileContent(filename);
+                const blob = new Blob([content], { type: 'text/x-python' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                showToast(`已导出 ${filename}`);
+            }
+
+            async function confirmDeleteFile(fn) {
+                if (fileList.length <= 1) return showToast('至少保留一个文件');
+                const ok = await showConfirm(`确定要删除文件 "${fn}" 吗？`);
+                if (!ok) return;
+                fileList = fileList.filter(f => f !== fn); saveFileList(); deleteFileData(fn);
+                if (activeFileName === fn) { activeFileName = fileList[0] || DEFAULT_FILE; setActiveFile(activeFileName); $textarea.value = loadFileContent(activeFileName); isDirty = false; fullUpdate(); }
+                renderFileList(); showToast(`已删除 "${fn}"`);
+            }
+
+            function switchToFile(fn) {
+                if (fn === activeFileName) return;
+                if (isDirty) saveFileContent(activeFileName, $textarea.value);
+                activeFileName = fn; setActiveFile(fn);
+                $textarea.value = loadFileContent(fn); isDirty = false; fullUpdate();
+                $statusSaved.textContent = '已保存'; $textarea.focus(); closeMobileSidebar();
+            }
+
+            async function createNewFile() {
+                const name = await showPrompt('文件名（例如：script.py）：', 'new_script.py');
+                if (!name || !name.trim()) return;
+                let fn = name.trim(); if (!fn.endsWith('.py')) fn += '.py';
+                if (fileList.includes(fn)) { showToast('文件已存在'); return; }
+                if (isDirty) saveFileContent(activeFileName, $textarea.value);
+                fileList.push(fn); saveFileList(); saveFileContent(fn, '');
+                activeFileName = fn; setActiveFile(fn);
+                $textarea.value = ''; isDirty = false; fullUpdate(); renderFileList();
+                $statusSaved.textContent = '已保存'; showToast('已创建：' + fn);
+                $textarea.focus(); closeMobileSidebar();
+            }
+
+            function saveCurrentFile() { saveFileContent(activeFileName, $textarea.value); isDirty = false; $statusSaved.textContent = '已保存'; showToast('已保存：' + activeFileName); }
+            function closeMobileSidebar() { $sidebar.classList.remove('mobile-open'); $sidebarBackdrop.classList.remove('show'); }
+
+            function showConfirm(msg) {
+                return new Promise(resolve => {
+                    const overlay = document.createElement('div'); overlay.className = 'modal-overlay open';
+                    overlay.innerHTML = `<div class="modal-dialog"><p style="color:#bbb;margin:12px 0;">${msg}</p><div class="modal-buttons"><button class="cancel">取消</button><button class="primary confirm">确定</button></div></div>`;
+                    document.body.appendChild(overlay);
+                    overlay.querySelector('.cancel').onclick = () => { overlay.remove(); resolve(false); };
+                    overlay.querySelector('.confirm').onclick = () => { overlay.remove(); resolve(true); };
+                });
+            }
+
+            function showPrompt(msg, def) {
+                return new Promise(resolve => {
+                    const overlay = document.createElement('div'); overlay.className = 'modal-overlay open';
+                    overlay.innerHTML = `<div class="modal-dialog"><p style="color:#bbb;margin:12px 0;">${msg}</p><input class="modal-input" value="${escapeHTML(def||'')}"><div class="modal-buttons"><button class="cancel">取消</button><button class="primary confirm">确定</button></div></div>`;
+                    document.body.appendChild(overlay); const input = overlay.querySelector('input'); input.focus();
+                    overlay.querySelector('.cancel').onclick = () => { overlay.remove(); resolve(null); };
+                    overlay.querySelector('.confirm').onclick = () => { overlay.remove(); resolve(input.value); };
+                });
+            }
+
+            function importFile() { $importInput.click(); }
+            $importInput.addEventListener('change', function() {
+                const file = this.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    let content = e.target.result; let fn = file.name;
+                    if (!fn.endsWith('.py') && !fn.endsWith('.txt')) fn += '.txt';
+                    if (fileList.includes(fn)) { const base = fn.replace(/\.\w+$/, ''); const ext = fn.endsWith('.txt') ? '.txt' : '.py'; let i = 1; while (fileList.includes(`${base}(${i})${ext}`)) i++; fn = `${base}(${i})${ext}`; }
+                    if (isDirty) saveFileContent(activeFileName, $textarea.value);
+                    fileList.push(fn); saveFileList(); saveFileContent(fn, content);
+                    activeFileName = fn; setActiveFile(fn);
+                    $textarea.value = content; isDirty = false; fullUpdate(); renderFileList();
+                    $statusSaved.textContent = '已保存'; showToast(`已导入：${fn}`);
+                    $textarea.focus(); closeMobileSidebar();
+                };
+                reader.readAsText(file); this.value = '';
+            });
+
+            $textarea.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'f') { e.preventDefault(); $searchBar.classList.remove('hidden'); $searchInput.focus(); if ($searchInput.value) executeSearch(); return; }
+                if (e.ctrlKey && e.key === 'h') { e.preventDefault(); $searchBar.classList.remove('hidden'); $replaceInput.focus(); return; }
+                if (e.key === 'Enter' && !e.ctrlKey) {
+                    e.preventDefault();
+                    const pos = this.selectionStart; const text = this.value;
+                    const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+                    const currentLine = text.substring(lineStart, pos);
+                    const { str } = getIndentInfo(currentLine);
+                    const extra = currentLine.trimEnd().endsWith(':') ? getIndentStr() : '';
+                    const insertion = '\n' + str + extra;
+                    this.value = text.substring(0, pos) + insertion + text.substring(pos);
+                    this.selectionStart = this.selectionEnd = pos + insertion.length;
+                    onContentChange();
+                } else if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); if (this.selectionStart !== this.selectionEnd) indentSelection(); else { const ind = getIndentStr(); const pos = this.selectionStart; this.value = this.value.substring(0, pos) + ind + this.value.substring(pos); this.selectionStart = this.selectionEnd = pos + ind.length; onContentChange(); } }
+                else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); outdentSelection(); }
+                else if (e.key === 'Backspace') {
+                    const pos = this.selectionStart; if (pos !== this.selectionEnd) return;
+                    const text = this.value; const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+                    const beforeCursor = text.substring(lineStart, pos);
+                    if (/^ +$/.test(beforeCursor) && currentSettings.indentType === 'space') { const spaces = beforeCursor.length; if (spaces >= currentSettings.indentSize) { e.preventDefault(); const del = currentSettings.indentSize; this.value = text.substring(0, pos - del) + text.substring(pos); this.selectionStart = this.selectionEnd = pos - del; onContentChange(); } }
+                }
+            });
+
+            $textarea.addEventListener('input', onContentChange);
+            $textarea.addEventListener('click', updateCursorPosition);
+            $textarea.addEventListener('keyup', updateCursorPosition);
+            $textarea.addEventListener('paste', function(e) { e.preventDefault(); const d = e.clipboardData || window.clipboardData; const pt = d.getData('text'); const s = this.selectionStart, ed = this.selectionEnd; this.value = this.value.substring(0, s) + pt + this.value.substring(ed); this.selectionStart = this.selectionEnd = s + pt.length; requestAnimationFrame(() => requestAnimationFrame(onContentChange)); });
+
+            document.getElementById('btn-save').addEventListener('click', saveCurrentFile);
+            document.getElementById('btn-new-file').addEventListener('click', createNewFile);
+            document.getElementById('btn-sidebar-add').addEventListener('click', createNewFile);
+            document.getElementById('btn-import').addEventListener('click', importFile);
+            document.getElementById('btn-indent').addEventListener('click', () => { if ($textarea.selectionStart !== $textarea.selectionEnd) indentSelection(); else { const ind = getIndentStr(); const pos = $textarea.selectionStart; $textarea.value = $textarea.value.substring(0, pos) + ind + $textarea.value.substring(pos); $textarea.selectionStart = $textarea.selectionEnd = pos + ind.length; onContentChange(); } });
+            document.getElementById('btn-outdent').addEventListener('click', outdentSelection);
+            document.getElementById('btn-undo').addEventListener('click', () => { document.execCommand('undo'); onContentChange(); });
+            document.getElementById('btn-redo').addEventListener('click', () => { document.execCommand('redo'); onContentChange(); });
+            document.getElementById('btn-run').addEventListener('click', runCode);
+            document.getElementById('btn-clear-terminal').addEventListener('click', clearTerminal);
+            document.getElementById('btn-close-terminal').addEventListener('click', () => $terminalPanel.classList.add('hidden'));
+
+            document.getElementById('btn-search').addEventListener('click', toggleSearchBar);
+            document.getElementById('btn-search-close').addEventListener('click', toggleSearchBar);
+            document.getElementById('btn-find-execute').addEventListener('click', () => executeSearch());
+            document.getElementById('btn-search-next').addEventListener('click', searchNext);
+            document.getElementById('btn-search-prev').addEventListener('click', searchPrev);
+            document.getElementById('btn-replace-one').addEventListener('click', replaceCurrent);
+            document.getElementById('btn-replace-all').addEventListener('click', replaceAll);
+            document.getElementById('btn-case-sensitive').addEventListener('click', function() { caseSensitive = !caseSensitive; this.classList.toggle('active', caseSensitive); if (searchResults.length > 0 || $searchInput.value) executeSearch(); });
+            $searchInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); executeSearch(); } });
+            $replaceInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); replaceCurrent(); } });
+
+            document.getElementById('btn-toggle-sidebar').addEventListener('click', () => { if (window.innerWidth <= 768) { $sidebar.classList.toggle('mobile-open'); $sidebarBackdrop.classList.toggle('show'); } else $sidebar.style.display = $sidebar.style.display === 'none' ? 'flex' : 'none'; });
+            $sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+
+            document.getElementById('btn-settings').addEventListener('click', () => { $('settings-panel').classList.add('open'); $('settings-overlay').classList.add('open'); });
+            document.getElementById('btn-sp-close').addEventListener('click', () => { $('settings-panel').classList.remove('open'); $('settings-overlay').classList.remove('open'); });
+            $('settings-overlay').addEventListener('click', () => { $('settings-panel').classList.remove('open'); $('settings-overlay').classList.remove('open'); });
+
+            document.getElementById('btn-about').addEventListener('click', () => { $('settings-panel').classList.remove('open'); $('settings-overlay').classList.remove('open'); setTimeout(() => $('about-overlay').classList.add('open'), 250); });
+            document.getElementById('btn-modal-close').addEventListener('click', () => $('about-overlay').classList.remove('open'));
+            $('about-overlay').addEventListener('click', e => { if (e.target === $('about-overlay')) $('about-overlay').classList.remove('open'); });
+            document.getElementById('footer-about-link').addEventListener('click', e => { e.preventDefault(); $('about-overlay').classList.add('open'); });
+
+            document.getElementById('btn-changelog').addEventListener('click', function() { const panel = $('changelog-panel'); panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; if (panel.style.display === 'block') panel.scrollIntoView({ behavior: 'smooth' }); });
+
+            document.getElementById('btn-clear-data').addEventListener('click', async () => {
+                if (!await showConfirm('【警告】删除所有本地数据（包括Pyodide环境），不可撤销。确定继续？')) return;
+                if (!await showConfirm('【二次确认】真的要清除所有编辑器数据吗？')) return;
+                clearAllData(); $('settings-panel').classList.remove('open'); $('settings-overlay').classList.remove('open'); showToast('所有编辑器数据已清除');
+            });
+
+            document.getElementById('setting-font-size').addEventListener('change', function() { currentSettings.fontSize = +this.value; saveSettings(); });
+            document.getElementById('setting-word-wrap').addEventListener('click', function() { currentSettings.wordWrap = !currentSettings.wordWrap; this.classList.toggle('active', currentSettings.wordWrap); saveSettings(); });
+            document.getElementById('setting-indent-size').addEventListener('change', function() { if (this.value === 'tab') { currentSettings.indentType = 'tab'; currentSettings.indentSize = 4; } else { currentSettings.indentType = 'space'; currentSettings.indentSize = +this.value; } saveSettings(); });
+            document.getElementById('btn-restart-tutorial').addEventListener('click', () => { localStorage.removeItem(TUTORIAL_KEY); $('settings-panel').classList.remove('open'); $('settings-overlay').classList.remove('open'); showToast('下次刷新将弹出教程'); });
+
+            window.addEventListener('resize', () => { clearTimeout(window._resizeTimer); window._resizeTimer = setTimeout(() => { if (window.innerWidth > 768) { $sidebar.classList.remove('mobile-open'); $sidebarBackdrop.classList.remove('show'); $sidebar.style.display = 'flex'; } else { $sidebar.style.display = ''; $sidebar.classList.remove('mobile-open'); $sidebarBackdrop.classList.remove('show'); } fullUpdate(); }, 100); });
+            document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveCurrentFile(); } if ((e.ctrlKey || e.metaKey) && e.key === 'n') { e.preventDefault(); createNewFile(); } });
+
+            function startTutorial() {
+                const steps = [
+                    { id: 'btn-toggle-sidebar', title: '文件列表', desc: '打开/关闭侧边栏，管理 Python 文件。' },
+                    { id: 'btn-import', title: '导入文件', desc: '从本地导入 .py 或 .txt 文件。' },
+                    { id: 'btn-new-file', title: '新建文件', desc: '创建新的 .py 文件。' },
+                    { id: 'btn-save', title: '保存文件', desc: '保存当前文件到本地存储。' },
+                    { id: 'btn-run', title: '运行代码', desc: '使用 Pyodide 在线运行，弹窗显示下载进度。' },
+                    { id: 'btn-search', title: '查找替换', desc: '输入关键词点击查找按钮搜索。' },
+                    { id: 'btn-settings', title: '设置', desc: '调整字体、换行，查看更新历史。' },
+                ];
+                let step = 0, hl = null, card = null;
+                const overlay = document.createElement('div'); overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:100;';
+                document.body.appendChild(overlay);
+                function show() { if (hl) hl.classList.remove('tutorial-highlight'); if (card) card.remove(); if (step >= steps.length) { overlay.remove(); localStorage.setItem(TUTORIAL_KEY, '1'); showToast('教程完成！'); return; } const s = steps[step]; const el = document.getElementById(s.id); if (el) { el.classList.add('tutorial-highlight'); hl = el; card = document.createElement('div'); card.className = 'tutorial-card'; card.innerHTML = `<div class="tut-title">${s.title}</div><div>${s.desc}</div><div class="tut-buttons"><button id="tut-skip">跳过</button><button class="tut-primary" id="tut-next">${step===steps.length-1?'完成':'下一步'}</button></div>`; document.body.appendChild(card); const rect = el.getBoundingClientRect(); let top = rect.bottom + 10; if (top + card.offsetHeight > window.innerHeight - 10) top = rect.top - card.offsetHeight - 10; if (top < 10) top = 10; let left = rect.left; if (left + 300 > window.innerWidth) left = window.innerWidth - 310; if (left < 10) left = 10; card.style.top = top + 'px'; card.style.left = left + 'px'; document.getElementById('tut-next').addEventListener('click', () => { step++; show(); }); document.getElementById('tut-skip').addEventListener('click', () => { if (hl) hl.classList.remove('tutorial-highlight'); card.remove(); overlay.remove(); localStorage.setItem(TUTORIAL_KEY, '1'); showToast('已跳过教程'); }); } else { step++; show(); } }
+                show();
+            }
+
+            function checkTutorial() {
+                if (!localStorage.getItem(TUTORIAL_KEY)) {
+                    const modal = document.createElement('div'); modal.className = 'modal-overlay open';
+                    modal.innerHTML = `<div class="modal-dialog"><h3 style="color:#fff;margin-bottom:6px;">欢迎使用 LMCode</h3><p style="color:#bbb;margin:12px 0;">是否需要观看快速教程？</p><div class="modal-buttons"><button id="tut-no">跳过</button><button id="tut-yes" class="primary">观看教程</button></div></div>`;
+                    document.body.appendChild(modal);
+                    document.getElementById('tut-yes').addEventListener('click', () => { modal.remove(); startTutorial(); });
+                    document.getElementById('tut-no').addEventListener('click', () => { modal.remove(); localStorage.setItem(TUTORIAL_KEY, '1'); });
+                }
+            }
+
+            function init() {
+                loadSettings(); loadFileList();
+                activeFileName = getActiveFile();
+                $textarea.value = loadFileContent(activeFileName);
+                setActiveFile(activeFileName); renderFileList(); fullUpdate();
+                $statusSaved.textContent = '已保存';
+                if (localStorage.getItem(PYODIDE_READY_KEY)) { $statusPyodide.style.display = 'inline'; }
+                if (window.innerWidth <= 768) closeMobileSidebar();
+                $textarea.focus();
+                setTimeout(checkTutorial, 400);
+            }
+            init();
+        })();
+    </script>
+</body>
+</html>
