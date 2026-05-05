@@ -802,7 +802,7 @@ builtins.input = _lmcode_input
                         <div class="modal-dialog">
                             <h3 style="color:#fff;margin-bottom:6px;"><i class="fa-solid fa-cloud-download-alt"></i> 下载 Python 运行环境</h3>
                             <p style="color:#bbb;margin:12px 0;">Pyodide 约 10MB，下载后可在线运行 Python 代码。</p>
-                            <p style="color:#888;font-size:0.75rem;">下载进度会以弹窗展示，支持 input() 输入。</p>
+                            <p style="color:#888;font-size:0.75rem;">建议在WiFi环境下载</p>
                             <div class="modal-buttons"><button class="cancel">取消</button><button class="primary confirm"><i class="fa-solid fa-download"></i> 开始下载</button></div></div>`;
                     document.body.appendChild(overlay);
                     overlay.querySelector('.cancel').onclick = () => { overlay.remove(); resolve(false); };
