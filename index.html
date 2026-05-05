@@ -729,7 +729,7 @@ builtins.input = _lmcode_input
                     localStorage.setItem(PYODIDE_READY_KEY, '1');
                     $statusPyodide.style.display = 'inline';
                     appendTerminal('info', 'Pyodide 加载完成，Python 环境就绪。\n');
-                    appendTerminal('prompt', '>>> input() 已就绪，可正常使用\n\n');
+                    appendTerminal('prompt', '>>> 终端已就绪\n\n');
                     setTimeout(() => closeProgressModal(progressModal), 600);
                     return pyodideInstance;
                 } catch (err) {
